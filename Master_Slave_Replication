@@ -1,0 +1,173 @@
+###########################################
+Steps to Multisource replication in Ubuntu :
+###########################################
+
+
+STEP 1:
+=======
+
+Install Mariadb on  Master and  Slave 
+--------------------------------------
+
+master 192.168.56.116 mariadb version 10.1.48  PC_Name= Mariadb10.3        username : maria pwd: pass@123
+Path : \etc\mysql\mysql.conf.d\mysql.cnf
+
+slave  192.168.56.115 mariadb version 10.4.25  PC_Name= MariadbU     username : maria pwd: mani@123
+Path : \etc\mysql\my.cnf
+
+
+######################################################################################
+>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>> MASTER <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
+STEP 2:
+=======
+
+Change config file (my.cnf) on Master: 
+--------------------------------------
+
+
+#Configoure Master 1
+Bind_address            : 0.0.0.0
+server-id               = 101
+log_bin                 = /var/log/mysql/mysql-bin.log
+binlog_db_db            = test116
+
+######################################################################################
+STEP 3:
+=======
+Mariadb Service restart:
+------------------------
+
+sudo systemctl stop mariadb.service      
+sudo systemctl start mariadb.service     
+sudo systemctl status mariadb.service   
+sudo systemctl restart mariadb.service
+
+######################################################################################
+
+STEP 4:
+=======
+Create Replication user on Master:
+-----------------------------------
+
+create user 'replica1'@'192.168.56.115' identified by 'pass@123';
+GRANT REPLICATION SLAVE ON *.* TO 'replica1'@'192.168.56.115';
+
+######################################################################################
+
+STEP 5:
+=======
+Note Down the Binary log coordinates on Master which will be used for setting replication position:
+---------------------------------------------------------------------------------------------------
+
+
+MariaDB [test116]> show master status;
++------------------+----------+--------------+------------------+
+| File             | Position | Binlog_Do_DB | Binlog_Ignore_DB |
++------------------+----------+--------------+------------------+
+| mysql-bin.000001 |     1058 | test116      |                  |
++------------------+----------+--------------+------------------+
+
+
+######################################################################################
+
+STEP 6:
+=======
+MariaDB [test116]>Create database and tables which will be replicated:
+---------------------------------------------------
+
+MariaDB [test116]>create database test116;
+
+MariaDB [test116]>use test116;
+
+CREATE TABLE `tbl_EmployeeDetails` (
+  `EmpID` int(11) DEFAULT NULL,
+  `EmpName` varchar(50) DEFAULT NULL,
+  `EmailAddress` varchar(50) DEFAULT NULL,
+  KEY `pk_tbl_EmployeeDetails_EmpID` (`EmpID`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 ;
+
+insert into tbl_EmployeeDetails values (1,'Manish','manish@gmail.com');
+insert into tbl_EmployeeDetails values (2,'Test','test@gmail.com');
+
+
+
+
+######################################################################################
+
+STEP 7: >>>>>>>>>>>>>>>>>>>>> Data Copy from Master to slave <<<<<<<<<<<<<<<<<<<<<<<<<
+
+######################################################################################
+
+
+
+######################################################################################
+>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>> SLAVE <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
+
+STEP 8:
+=======
+Change config file (my.cnf) on Slave: 
+-------------------------------------
+
+#Configure Slave
+
+Bind_address              : 0.0.0.0
+server-id                 = 102
+
+log_bin                   = /var/log/mysql/mariadb-bin
+log_bin_index             = /var/log/mysql/mariadb-bin.index
+expire_logs_days          = 10
+max_binlog_size           = 100M
+# slaves
+relay_log                 = /var/log/mysql/relay-bin
+relay_log_index           = /var/log/mysql/relay-bin.index
+master_info_repository    = TABLE
+relay_log_info_repository = TABLE
+
+######################################################################################
+
+STEP 9:
+=======
+Mariadb Service restart:
+------------------------
+
+sudo systemctl stop mariadb.service      
+sudo systemctl start mariadb.service     
+sudo systemctl status mariadb.service   
+sudo systemctl restart mariadb.service
+
+
+
+STEP 10:
+========
+Create Replication from Master using binlog file, user, and position with Change Master command and start slave. 
+-----------------------------------------------------------------------------------------------------------------
+#[NOTE 'Master116' is Channel name:]
+
+
+MariaDB [test115]> CHANGE MASTER 'Master116' to MASTER_HOST='192.168.56.116', MASTER_PORT=3306, MASTER_USER='replica1', MASTER_PASSWORD='pass@123', MASTER_LOG_FILE='mysql-bin.000002', MASTER_LOG_POS=327;
+
+
+MariaDB [test115]> START SLAVE 'Master116';
+MariaDB [test115]> START ALL SLAVE;
+#MariaDB [test115]>  #START SLAVE 'Master116';
+MariaDB [test115]> SHOW SLAVE 'Master116' STATUS\G
+MariaDB [test115]> SHOW ALL SLAVES STATUS \G
+
+######################################################################################
+>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>> TESTING <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
+
+STEP 11:
+========
+#on Master insert records 
+MariaDB [test116]>  insert into tbl_EmployeeDetails values (3,'Admin','admin@gmail.com');
+
+#on check same records on slave
+MariaDB [test115]> SELECT * from tbl_EmployeeDetails;
+
+
+######################################################################################
+references:
+
+https://mariadb.com/kb/en/multi-source-replication/
+https://mariadb.com/resources/blog/high-availability-with-multi-source-replication-in-mariadb-server/
+https://mydbops.wordpress.com/2016/02/22/multi-source-replication-in-mysql-5-7/
